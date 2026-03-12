@@ -1,0 +1,76 @@
+<!-- Snort 3 IDS Rules for Wazuh -->
+<group name="snort3,ids,">
+
+  <!-- Base rule: any Snort 3 alert -->
+  <rule id="100300" level="6">
+    <decoded_as>json</decoded_as>
+    <field name="sid">^9</field>
+    <description>Snort 3 IDS Alert: $(msg)</description>
+    <group>snort3,</group>
+  </rule>
+
+  <!-- Scan / Reconnaissance -->
+  <rule id="100301" level="8">
+    <if_sid>100300</if_sid>
+    <field name="msg">^SCAN</field>
+    <description>Snort 3: Scan/Recon - $(msg)</description>
+    <group>snort3,recon,</group>
+  </rule>
+
+  <!-- Web Application Attack -->
+  <rule id="100302" level="10">
+    <if_sid>100300</if_sid>
+    <field name="msg">^INTRUSION HTTP</field>
+    <description>Snort 3: Web Attack - $(msg)</description>
+    <group>snort3,web_attack,</group>
+  </rule>
+
+  <!-- Malware / C2 -->
+  <rule id="100303" level="12">
+    <if_sid>100300</if_sid>
+    <field name="msg">^MALWARE</field>
+    <description>Snort 3: Malware/C2 - $(msg)</description>
+    <group>snort3,malware,</group>
+  </rule>
+
+  <!-- DoS / DDoS -->
+  <rule id="100304" level="10">
+    <if_sid>100300</if_sid>
+    <field name="msg">^INTRUSION DOS</field>
+    <description>Snort 3: DoS Attack - $(msg)</description>
+    <group>snort3,dos,</group>
+  </rule>
+
+  <!-- Correlation: repeated scan from same source (10+ in 2 min) -->
+  <rule id="100305" level="13" frequency="10" timeframe="120">
+    <if_matched_sid>100301</if_matched_sid>
+    <same_field>data.src_addr</same_field>
+    <description>Snort 3: CRITICAL - Active attack from $(data.src_addr) - $(msg)</description>
+    <group>snort3,attack_active,</group>
+  </rule>
+
+  <!-- Correlation: repeated malware/C2 from same source -->
+  <rule id="100306" level="14" frequency="3" timeframe="300">
+    <if_matched_sid>100303</if_matched_sid>
+    <same_field>data.src_addr</same_field>
+    <description>Snort 3: CRITICAL - Repeated C2/Malware from $(data.src_addr)</description>
+    <group>snort3,malware_repeat,</group>
+  </rule>
+
+  <!-- TOR connection (sub-category of malware) -->
+  <rule id="100307" level="13">
+    <if_sid>100303</if_sid>
+    <field name="msg">TOR</field>
+    <description>Snort 3: TOR Connection - $(msg)</description>
+    <group>snort3,tor,</group>
+  </rule>
+
+  <!-- Suspicious DNS / DGA (sub-category of malware) -->
+  <rule id="100308" level="11">
+    <if_sid>100303</if_sid>
+    <field name="msg">DNS</field>
+    <description>Snort 3: Suspicious DNS/DGA - $(msg)</description>
+    <group>snort3,dns_suspect,</group>
+  </rule>
+
+</group>

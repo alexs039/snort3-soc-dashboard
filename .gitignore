@@ -1,0 +1,21 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Secrets (never commit these!)
+*.pem
+*.key
+passwords.txt
+wazuh-passwords*
+
+# Logs
+*.log
+
+# Temp
+/tmp/

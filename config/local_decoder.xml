@@ -1,0 +1,7 @@
+<!-- Wazuh Decoder for Snort 3 JSON alerts -->
+<!-- Extracts src_addr as srcip for active response compatibility -->
+<decoder name="snort3-srcip">
+    <parent>json</parent>
+    <regex>src_addr":"(\S+)"</regex>
+    <order>srcip</order>
+</decoder>

@@ -1,0 +1,51 @@
+# Caddyfile — Reverse proxy for Wazuh Dashboard + SOC Dashboard
+# Handles TLS automatically via Let's Encrypt
+
+# Wazuh Dashboard (OpenSearch Dashboards)
+https://your-domain.com {
+	reverse_proxy localhost:5601
+}
+
+# SOC Dashboard + API proxies
+https://soc.your-domain.com {
+	# Wazuh API proxy
+	handle /api/* {
+		uri strip_prefix /api
+		reverse_proxy https://localhost:55000 {
+			transport http {
+				tls_insecure_skip_verify
+			}
+		}
+	}
+
+	# OpenSearch proxy (restricted to POST/search only)
+	handle /opensearch/* {
+		@blocked not method POST
+		respond @blocked 403
+		@dangerous path /opensearch/_bulk* /opensearch/_delete* /opensearch/*/_delete* /opensearch/*/_mapping* /opensearch/*/_settings*
+		respond @dangerous 403
+		uri strip_prefix /opensearch
+		reverse_proxy https://localhost:9200 {
+			transport http {
+				tls_insecure_skip_verify
+			}
+		}
+	}
+
+	# Geolocation proxy (ip-api.com is HTTP only)
+	handle /geo/* {
+		uri strip_prefix /geo
+		reverse_proxy http://ip-api.com {
+			header_up Host ip-api.com
+		}
+	}
+
+	# Dashboard with basic auth
+	handle {
+		basic_auth {
+			# Generate hash: caddy hash-password --plaintext "YourPassword"
+			your_user $2a$14$YOUR_BCRYPT_HASH_HERE
+		}
+		reverse_proxy localhost:8443
+	}
+}

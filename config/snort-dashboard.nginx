@@ -1,0 +1,15 @@
+# Nginx site configuration for SOC Dashboard
+# Install: /etc/nginx/sites-available/snort-dashboard
+# Enable: ln -s /etc/nginx/sites-available/snort-dashboard /etc/nginx/sites-enabled/
+
+server {
+    listen 8443;
+    server_name _;
+
+    root /var/www/snort-dashboard;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+}

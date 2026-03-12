@@ -1,0 +1,158 @@
+# =============================================================
+# RÈGLES SNORT 3 — local.rules
+# Compatible : Snort 3.10.2
+# Chemin : /etc/snort/rules/local.rules
+#
+# Corrections appliquées :
+#   - threshold  → detection_filter (supprimé en Snort 3)
+#   - flow:stateless sur les règles sans suivi d'état
+#   - http_uri / http_header / http_method (underscore, pas dot)
+#   - nocase en tant que modificateur de content (virgule)
+#   - offset/depth après sticky buffer supprimés
+#   - Ajout content minimal sur règles sans détection
+# =============================================================
+
+# ─────────────────────────────────────────────────────────────
+# SECTION 1 : SCANS DE PORTS
+# ─────────────────────────────────────────────────────────────
+
+alert tcp any any -> $HOME_NET any (msg:"SCAN SYN Scan detected"; flags:S; flow:stateless; detection_filter:track by_src, count 20, seconds 3; sid:9001001; rev:2; classtype:attempted-recon; metadata:mitre_technique T1046;)
+
+alert tcp any any -> $HOME_NET any (msg:"SCAN NULL Scan detected"; flags:0; flow:stateless; sid:9001002; rev:2; classtype:attempted-recon; metadata:mitre_technique T1046;)
+
+alert tcp any any -> $HOME_NET any (msg:"SCAN FIN Scan detected"; flags:F; flow:stateless; sid:9001003; rev:2; classtype:attempted-recon; metadata:mitre_technique T1046;)
+
+alert tcp any any -> $HOME_NET any (msg:"SCAN XMAS Scan detected"; flags:FPU; flow:stateless; sid:9001004; rev:2; classtype:attempted-recon; metadata:mitre_technique T1046;)
+
+alert tcp any any -> $HOME_NET any (msg:"SCAN ACK Firewall Probe detected"; flags:A; flow:stateless; detection_filter:track by_src, count 30, seconds 5; sid:9001005; rev:2; classtype:attempted-recon; metadata:mitre_technique T1046;)
+
+# Added dsize:0 as minimal detection option to suppress "no detection options" warning
+alert udp any any -> $HOME_NET any (msg:"SCAN UDP Port Scan detected"; dsize:<10; detection_filter:track by_src, count 30, seconds 5; sid:9001006; rev:2; classtype:attempted-recon; metadata:mitre_technique T1046;)
+
+alert icmp any any -> $HOME_NET any (msg:"SCAN ICMP Ping Sweep detected"; itype:8; detection_filter:track by_src, count 10, seconds 3; sid:9001007; rev:2; classtype:attempted-recon; metadata:mitre_technique T1018;)
+
+alert tcp any any -> $HOME_NET [21,22,25,80,443,3306,5432,8080] (msg:"SCAN Banner Grabbing attempt"; flow:to_server,established; dsize:<5; detection_filter:track by_src, count 8, seconds 10; sid:9001009; rev:2; classtype:attempted-recon; metadata:mitre_technique T1046;)
+
+alert tcp any any -> $HOME_NET 22 (msg:"SCAN Brute Force SSH attempt"; flags:S; flow:stateless; detection_filter:track by_src, count 5, seconds 60; sid:9001010; rev:2; classtype:attempted-admin; metadata:mitre_technique T1110;)
+
+# ─────────────────────────────────────────────────────────────
+# SECTION 2 : INTRUSIONS RÉSEAU
+# Prérequis : http_inspect = {} dans snort.lua
+# ─────────────────────────────────────────────────────────────
+
+alert http any any -> $HOME_NET any (msg:"INTRUSION HTTP Directory Traversal"; flow:to_server,established; content:"../", nocase; http_uri; sid:9002001; rev:2; classtype:web-application-attack; metadata:mitre_technique T1083;)
+
+alert http any any -> $HOME_NET any (msg:"INTRUSION HTTP SQL Injection OR"; flow:to_server,established; content:"' OR '1'='1", nocase; http_uri; sid:9002002; rev:2; classtype:web-application-attack; metadata:mitre_technique T1190;)
+
+alert http any any -> $HOME_NET any (msg:"INTRUSION HTTP SQL Injection UNION SELECT"; flow:to_server,established; content:"UNION", nocase; http_uri; content:"SELECT", nocase, distance 0, within 30; http_uri; sid:9002003; rev:2; classtype:web-application-attack; metadata:mitre_technique T1190;)
+
+alert http any any -> $HOME_NET any (msg:"INTRUSION HTTP SQL Comment Injection"; flow:to_server,established; content:"--"; http_uri; content:"'"; http_uri; sid:9002004; rev:2; classtype:web-application-attack; metadata:mitre_technique T1190;)
+
+alert http any any -> $HOME_NET any (msg:"INTRUSION HTTP XSS script tag"; flow:to_server,established; content:"<script>", nocase; http_uri; sid:9002005; rev:2; classtype:web-application-attack; metadata:mitre_technique T1059;)
+
+alert http any any -> $HOME_NET any (msg:"INTRUSION HTTP XSS javascript URI"; flow:to_server,established; content:"javascript:", nocase; http_uri; sid:9002006; rev:2; classtype:web-application-attack; metadata:mitre_technique T1059;)
+
+alert http any any -> $HOME_NET any (msg:"INTRUSION HTTP Remote File Inclusion"; flow:to_server,established; content:"=http://", nocase; http_uri; sid:9002007; rev:2; classtype:web-application-attack; metadata:mitre_technique T1190;)
+
+alert http any any -> $HOME_NET any (msg:"INTRUSION HTTP Command Injection"; flow:to_server,established; content:"/bin/sh", nocase; http_uri; sid:9002008; rev:2; classtype:web-application-attack; metadata:mitre_technique T1059;)
+
+alert http any any -> $HOME_NET any (msg:"INTRUSION HTTP LFI etc passwd"; flow:to_server,established; content:"etc/passwd", nocase; http_uri; sid:9002009; rev:2; classtype:web-application-attack; metadata:mitre_technique T1083;)
+
+alert http any any -> $HOME_NET any (msg:"INTRUSION HTTP ShellShock CVE-2014-6271"; flow:to_server,established; content:"() {"; http_header; sid:9002010; rev:2; classtype:web-application-attack; metadata:cve CVE-2014-6271, mitre_technique T1190;)
+
+alert http any any -> $HOME_NET any (msg:"INTRUSION HTTP Log4Shell header CVE-2021-44228"; flow:to_server,established; content:"${jndi:", nocase; http_header; sid:9002011; rev:2; classtype:web-application-attack; metadata:cve CVE-2021-44228, mitre_technique T1190;)
+
+alert http any any -> $HOME_NET any (msg:"INTRUSION HTTP Log4Shell URI CVE-2021-44228"; flow:to_server,established; content:"${jndi:", nocase; http_uri; sid:9002012; rev:2; classtype:web-application-attack; metadata:cve CVE-2021-44228, mitre_technique T1190;)
+
+alert tcp any any -> $HOME_NET any (msg:"INTRUSION DOS SYN Flood"; flags:S; flow:stateless; detection_filter:track by_dst, count 200, seconds 5; sid:9002020; rev:2; classtype:attempted-dos; metadata:mitre_technique T1498;)
+
+alert icmp any any -> $HOME_NET any (msg:"INTRUSION DOS ICMP Flood"; itype:8; detection_filter:track by_dst, count 100, seconds 5; sid:9002021; rev:2; classtype:attempted-dos; metadata:mitre_technique T1498;)
+
+# Added dsize:>0 as minimal detection option to suppress "no detection options" warning
+alert udp any any -> $HOME_NET any (msg:"INTRUSION DOS UDP Flood"; dsize:>0; detection_filter:track by_dst, count 500, seconds 5; sid:9002022; rev:2; classtype:attempted-dos; metadata:mitre_technique T1498;)
+
+alert tcp any any -> $HOME_NET 445 (msg:"INTRUSION SMB EternalBlue MS17-010"; flow:to_server,established; content:"|00 00 00 85 ff 53 4d 42|"; sid:9002025; rev:2; classtype:attempted-admin; metadata:cve CVE-2017-0143, mitre_technique T1210;)
+
+alert tcp any any -> $HOME_NET 445 (msg:"INTRUSION SMB Brute Force"; flow:to_server,established; detection_filter:track by_src, count 10, seconds 60; sid:9002026; rev:2; classtype:attempted-admin; metadata:mitre_technique T1110;)
+
+alert tcp any any -> $HOME_NET 23 (msg:"INTRUSION Telnet cleartext protocol"; flags:S; flow:stateless; sid:9002027; rev:2; classtype:policy-violation; metadata:mitre_technique T1021;)
+
+alert udp any 53 -> $HOME_NET any (msg:"INTRUSION DNS Amplification attack"; dsize:>512; detection_filter:track by_src, count 20, seconds 5; sid:9002028; rev:2; classtype:attempted-dos; metadata:mitre_technique T1498;)
+
+# ─────────────────────────────────────────────────────────────
+# SECTION 3 : MALWARE / C2
+# ─────────────────────────────────────────────────────────────
+
+alert tcp $HOME_NET any -> any 6667 (msg:"MALWARE C2 IRC connection"; flow:to_server,established; content:"NICK "; sid:9003001; rev:2; classtype:trojan-activity; metadata:mitre_technique T1071;)
+
+alert tcp $HOME_NET any -> any 6697 (msg:"MALWARE C2 IRC SSL connection"; flow:to_server,established; sid:9003002; rev:2; classtype:trojan-activity; metadata:mitre_technique T1071;)
+
+alert tcp $HOME_NET any -> any 4444 (msg:"MALWARE Metasploit reverse shell port 4444"; flow:to_server,established; sid:9003003; rev:2; classtype:trojan-activity; metadata:mitre_technique T1059;)
+
+alert tcp $HOME_NET any -> any 4433 (msg:"MALWARE Possible Meterpreter port 4433"; flow:to_server,established; sid:9003004; rev:2; classtype:trojan-activity; metadata:mitre_technique T1059;)
+
+alert tcp $HOME_NET any -> any 50050 (msg:"MALWARE Cobalt Strike Teamserver"; flow:to_server,established; sid:9003005; rev:2; classtype:trojan-activity; metadata:mitre_technique T1071;)
+
+alert http $HOME_NET any -> any any (msg:"MALWARE Cobalt Strike HTTP Beacon UA"; flow:to_server,established; content:"User-Agent|3a| Mozilla/5.0 (compatible|3b| MSIE 9.0|3b|", nocase; http_header; sid:9003006; rev:2; classtype:trojan-activity; metadata:mitre_technique T1071;)
+
+alert udp $HOME_NET any -> any 53 (msg:"MALWARE DNS Exfiltration TXT record"; content:"|00 10|"; detection_filter:track by_src, count 50, seconds 60; sid:9003010; rev:2; classtype:trojan-activity; metadata:mitre_technique T1048;)
+
+alert udp $HOME_NET any -> any 53 (msg:"MALWARE DNS Tunneling long query"; dsize:>150; detection_filter:track by_src, count 20, seconds 30; sid:9003011; rev:2; classtype:trojan-activity; metadata:mitre_technique T1071;)
+
+alert http $HOME_NET any -> !$HOME_NET any (msg:"MALWARE HTTP POST Exfiltration no Host"; flow:to_server,established; content:"POST"; http_method; content:!"Host|3a|"; http_header; sid:9003022; rev:2; classtype:trojan-activity; metadata:mitre_technique T1041;)
+
+alert tcp $HOME_NET any -> any 445 (msg:"MALWARE WannaCry SMB propagation"; flow:to_server,established; content:"|00 00 00 85 ff 53 4d 42 72|"; sid:9003030; rev:2; classtype:trojan-activity; metadata:cve CVE-2017-0144, mitre_technique T1210;)
+
+alert tcp any any -> $HOME_NET 23 (msg:"MALWARE Mirai botnet Telnet scan"; flow:to_server,established; content:"shell", nocase; sid:9003031; rev:2; classtype:trojan-activity; metadata:mitre_technique T1110;)
+
+alert http $HOME_NET any -> !$HOME_NET any (msg:"MALWARE Periodic HTTP C2 Beacon"; flow:to_server,established; content:"GET"; http_method; content:!"Mozilla"; http_header; detection_filter:track by_src, count 20, seconds 300; sid:9003032; rev:2; classtype:trojan-activity; metadata:mitre_technique T1071;)
+
+alert http $HOME_NET any -> !$HOME_NET any (msg:"MALWARE PowerShell HTTP download cradle"; flow:to_server,established; content:"powershell", nocase; http_header; sid:9003033; rev:2; classtype:trojan-activity; metadata:mitre_technique T1059;)
+
+# ─────────────────────────────────────────────────────────────
+# SECTION 4 : DÉTECTION DNS SUSPECTS (DGA)
+# ─────────────────────────────────────────────────────────────
+
+alert udp $HOME_NET any -> any 53 (msg:"MALWARE DNS Query to suspicious TLD .xyz"; flow:to_server,established; content:"|03|xyz|00|", nocase; sid:9004001; rev:1; classtype:trojan-activity; metadata:mitre_technique T1071;)
+
+alert udp $HOME_NET any -> any 53 (msg:"MALWARE DNS Query to suspicious TLD .top"; flow:to_server,established; content:"|03|top|00|", nocase; sid:9004002; rev:1; classtype:trojan-activity; metadata:mitre_technique T1071;)
+
+alert udp $HOME_NET any -> any 53 (msg:"MALWARE DNS Query to suspicious TLD .buzz"; flow:to_server,established; content:"|04|buzz|00|", nocase; sid:9004003; rev:1; classtype:trojan-activity; metadata:mitre_technique T1071;)
+
+alert udp $HOME_NET any -> any 53 (msg:"MALWARE DNS Query to suspicious TLD .tk"; flow:to_server,established; content:"|02|tk|00|", nocase; sid:9004004; rev:1; classtype:trojan-activity; metadata:mitre_technique T1071;)
+
+alert udp $HOME_NET any -> any 53 (msg:"MALWARE DNS Query to suspicious TLD .ml"; flow:to_server,established; content:"|02|ml|00|", nocase; sid:9004005; rev:1; classtype:trojan-activity; metadata:mitre_technique T1071;)
+
+alert udp $HOME_NET any -> any 53 (msg:"MALWARE DNS DGA suspected - very long query"; dsize:>100; detection_filter:track by_src, count 5, seconds 60; sid:9004006; rev:1; classtype:trojan-activity; metadata:mitre_technique T1568;)
+
+# ─────────────────────────────────────────────────────────────
+# SECTION 5 : DÉTECTION TOR
+# ─────────────────────────────────────────────────────────────
+
+alert tcp $HOME_NET any -> any 9001 (msg:"MALWARE TOR Relay connection port 9001"; flow:to_server,established; sid:9005001; rev:1; classtype:policy-violation; metadata:mitre_technique T1090;)
+
+alert tcp $HOME_NET any -> any 9030 (msg:"MALWARE TOR Directory connection port 9030"; flow:to_server,established; sid:9005002; rev:1; classtype:policy-violation; metadata:mitre_technique T1090;)
+
+alert tcp $HOME_NET any -> any 9050 (msg:"MALWARE TOR SOCKS Proxy port 9050"; flow:to_server,established; sid:9005003; rev:1; classtype:policy-violation; metadata:mitre_technique T1090;)
+
+alert tcp $HOME_NET any -> any 9150 (msg:"MALWARE TOR Browser SOCKS port 9150"; flow:to_server,established; sid:9005004; rev:1; classtype:policy-violation; metadata:mitre_technique T1090;)
+
+alert tcp $HOME_NET any -> any any (msg:"MALWARE TOR SSL Certificate detected"; flow:to_server,established; content:"tor"; content:".onion"; sid:9005005; rev:1; classtype:policy-violation; metadata:mitre_technique T1090;)
+
+alert udp $HOME_NET any -> any 53 (msg:"MALWARE TOR DNS query for .onion domain"; content:"|05|onion|00|", nocase; sid:9005006; rev:1; classtype:policy-violation; metadata:mitre_technique T1090;)
+
+# ─────────────────────────────────────────────────────────────
+# SECTION 6 : RÈGLES IPS (mode inline démonstration)
+# ─────────────────────────────────────────────────────────────
+
+drop tcp any any -> $HOME_NET any (msg:"IPS DROP SYN Scan blocked"; flags:S; flow:stateless; detection_filter:track by_src, count 20, seconds 3; sid:9006001; rev:1; classtype:attempted-recon;)
+
+drop http any any -> $HOME_NET any (msg:"IPS DROP SQL Injection blocked"; flow:to_server,established; content:"' OR '1'='1", nocase; http_uri; sid:9006002; rev:1; classtype:web-application-attack;)
+
+drop http any any -> $HOME_NET any (msg:"IPS DROP XSS blocked"; flow:to_server,established; content:"<script>", nocase; http_uri; sid:9006003; rev:1; classtype:web-application-attack;)
+
+drop http any any -> $HOME_NET any (msg:"IPS DROP Log4Shell blocked"; flow:to_server,established; content:"${jndi:", nocase; http_uri; sid:9006004; rev:1; classtype:web-application-attack;)
+
+drop http any any -> $HOME_NET any (msg:"IPS DROP Directory Traversal blocked"; flow:to_server,established; content:"../", nocase; http_uri; sid:9006005; rev:1; classtype:web-application-attack;)
+
+drop tcp $HOME_NET any -> any 9001 (msg:"IPS DROP TOR connection blocked"; flow:to_server,established; sid:9006006; rev:1; classtype:policy-violation;)
