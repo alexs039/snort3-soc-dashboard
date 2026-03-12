@@ -6,17 +6,46 @@ A real-time security monitoring dashboard that connects to OpenSearch (via Wazuh
 
 ## 🖼️ Features
 
+### Core Monitoring
 - **Real-time alert monitoring** — Auto-refreshes every 15 seconds via OpenSearch API
 - **3 Dashboard tabs** — Snort IDS, Windows Events, World Attack Map
 - **MITRE ATT&CK mapping** — Each alert is mapped to its MITRE technique
-- **Geolocation** — Attack sources plotted on a world map with country identification
 - **Threat classification** — Scan/Recon, Web Attack, DoS/DDoS, Malware/C2
 - **Severity levels** — Low, Medium, High, Critical with visual indicators
-- **Active Response** — Automated IP blocking via Wazuh when attacks are detected
-- **Windows monitoring** — Windows agent events displayed in dedicated tab
+
+### SOC Analytics (NEW)
+- **SOC Overview Panel** — MTTD (Mean Time To Detect), alerts/minute rate, unique attackers, top targeted port, protocol distribution
+- **MITRE ATT&CK Heatmap** — Interactive heatmap grid grouped by tactics (Reconnaissance, Initial Access, Execution, etc.) with clickable technique cells
+- **Timeline & Trends** — 7-day alert timeline, hourly heatmap (24h), trend indicators comparing today vs yesterday
+- **Active Response Log** — Real-time view of blocked IPs with timestamps, reasons, and time remaining before auto-unblock
+
+### Windows Event Analysis (ENHANCED)
+- **EventID categorization** — Security (4624, 4625, 4720, 4732, 4648), System (11, 7045, 1001)
+- **Login activity panel** — Successful vs failed login tracking
+- **User activity tracking** — Which users triggered the most alerts
+- **Event categories** — Security, System, Application with counters
+
+### Interactive Features
+- **Alert detail panel** — Slide-in side panel with full JSON, MITRE details, geolocation data, copy-to-clipboard
+- **Export & Reporting** — CSV export, JSON export, HTML report generation
+- **Advanced filtering** — Filter by category, MITRE technique, search by IP/message/SID
+- **Sound notifications** — Optional audio alerts for critical events (level 12+)
+- **Last updated timestamp** — Real-time counter showing time since last refresh
+
+### World Attack Map (IMPROVED)
+- **Better continent outlines** — More accurate continent shapes
+- **Animated attack lines** — Visual lines from source to target (Tokyo)
+- **Pulsing dots** — Dynamic pulsing effect on attack sources
+- **Country labels** — Top 5 attacking countries shown on map
+- **Mini stats overlay** — Total attacks, countries count, most active country
+
+### Security & Performance
 - **XSS-safe** — All OpenSearch data is sanitized before rendering
 - **Content Security Policy** — CSP headers to prevent script injection
-- **Responsive** — Works on desktop and tablet
+- **Lazy-loading** — Map geolocation only when tab is opened
+- **Geolocation caching** — Prevents repeated API calls for same IPs
+- **Responsive design** — Works on desktop, tablet (1024px+)
+- **Smooth animations** — Staggered card animations, smooth transitions
 
 ## 🏗️ Architecture
 
@@ -55,6 +84,8 @@ A real-time security monitoring dashboard that connects to OpenSearch (via Wazuh
 # On the Wazuh server
 mkdir -p /var/www/snort-dashboard
 cp index.html /var/www/snort-dashboard/index.html
+cp style.css /var/www/snort-dashboard/style.css
+cp app.js /var/www/snort-dashboard/app.js
 ```
 
 ### 2. Configure Nginx
@@ -119,7 +150,9 @@ https://your-domain.com {
 
 ```
 snort3-soc-dashboard/
-├── index.html              # Main dashboard (single-file, no dependencies)
+├── index.html              # Main HTML file (loads CSS and JS)
+├── style.css               # All styles and responsive design
+├── app.js                  # Complete dashboard logic and features
 ├── README.md               # This file
 ├── LICENSE                  # MIT License
 ├── docs/
@@ -128,15 +161,22 @@ snort3-soc-dashboard/
 │   ├── wazuh-config.md     # Wazuh configuration guide
 │   └── security.md         # Security hardening notes
 ├── config/
-│   ├── local.rules         # Snort 3 detection rules
+│   ├── local.rules         # Snort 3 detection rules (53 custom rules)
 │   ├── local_rules.xml     # Wazuh correlation rules
 │   ├── local_decoder.xml   # Wazuh decoder for Snort alerts
 │   ├── Caddyfile           # Caddy reverse proxy config
-│   ├── snort-dashboard     # Nginx site config
+│   ├── snort-dashboard.nginx # Nginx site config
 │   └── snort-drop.sh       # Active response script
 └── screenshots/
     └── (add your screenshots here)
 ```
+
+**Note:** The dashboard now uses separate files for better maintainability:
+- `index.html` - Minimal HTML structure
+- `style.css` - All CSS including responsive media queries (~260 lines)
+- `app.js` - Complete JavaScript with all features (~1070 lines)
+
+No build step required — works by opening `index.html` directly or serving via Nginx.
 
 ## 🔒 Security Features
 
