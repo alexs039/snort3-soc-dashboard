@@ -19,3 +19,4 @@ wazuh-passwords*
 
 # Temp
 /tmp/
+config/__pycache__/
