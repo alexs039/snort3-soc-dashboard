@@ -173,8 +173,8 @@ export async function unblockIP(ip) {
       body: JSON.stringify({ ip }),
     });
     if (r.ok) { await fetchBlockedIPs(); render(); }
-    else { alert("Erreur lors du déblocage de l'IP"); }
-  } catch (e) { alert("Erreur réseau: " + e.message); }
+    else { S.error = "Erreur lors du déblocage de l'IP"; render(); }
+  } catch (e) { S.error = "Erreur réseau: " + e.message; render(); }
 }
 
 /**

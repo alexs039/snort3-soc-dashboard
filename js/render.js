@@ -39,7 +39,7 @@ export function render() {
 
   document.getElementById("app").innerHTML = `
     ${S.showConfig ? renderCfg() : ""}
-    ${S.detailAlert !== null ? renderDetailPanel(S.detailAlert) : ""}
+    ${typeof S.detailAlert === 'number' ? renderDetailPanel(S.detailAlert) : ""}
 
     <header class="header">
       <div class="header-left">
