@@ -80,20 +80,26 @@ const WIN_EVENTS={
 // ── GEO CACHE ────────────────────────────────────────────────
 const geoCache={};
 
+// In production, replace with a server-side proxy to avoid mixed-content issues
 async function geoLookup(ip){
   if(geoCache[ip])return geoCache[ip];
   try{
-    const r=await fetch(`https://ip-api.com/json/${ip}?fields=country,countryCode,lat,lon,org`);
+    const r=await fetch(`http://ip-api.com/json/${ip}?fields=country,countryCode,lat,lon,org`);
     if(r.ok){const d=await r.json();if(d.lat){geoCache[ip]=d;return d;}}
   }catch(e){}
   return null;
+}
+
+function isPrivateIP(ip){
+  if(!ip)return true;
+  return /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|127\.|0\.|169\.254\.|::1$|fc[0-9a-f]{2}:|fd[0-9a-f]{2}:|fe80:)/.test(ip.toLowerCase());
 }
 
 // ── STATE ────────────────────────────────────────────────────
 let S={
   alerts:[],winAlerts:[],filter:"all",search:"",sortDir:"desc",mitreFilter:null,
   connected:false,error:"",showConfig:false,tab:"snort",detailAlert:null,
-  config:{url:"https://soc.your-domain.com/opensearch",username:"",password:""},
+  config:{url:"https://soc.your-domain.com/opensearch",username:"",password:"",targetLat:50.85,targetLng:4.35,targetName:"Serveur"},
   refreshInterval:null,geoData:{},mapReady:false,lastUpdate:Date.now(),
   soundEnabled:false,lastAlertCount:0,loading:false
 };
@@ -186,8 +192,8 @@ async function fetchAlerts(){
 
 async function resolveGeo(){
   const ips={};
-  S.alerts.forEach(a=>{const ip=a.data?.src_addr;if(ip&&!S.geoData[ip])ips[ip]=1});
-  const unique=Object.keys(ips).slice(0,15);
+  S.alerts.forEach(a=>{const ip=a.data?.src_addr;if(ip&&!isPrivateIP(ip)&&!S.geoData[ip])ips[ip]=1});
+  const unique=Object.keys(ips).slice(0,30);
   for(const ip of unique){
     const g=await geoLookup(ip);
     if(g)S.geoData[ip]={lat:g.lat,lng:g.lon,country:g.country,code:g.countryCode,org:g.org};
@@ -350,7 +356,7 @@ function exportCSV(){
   filtered.forEach(a=>{
     const t=formatTime(a.timestamp);
     const level=a.rule?.level||"?";
-    const msg=(a.data?.msg||"").replace(/,/g,";");
+    const msg=(a.data?.msg||"").replace(/"/g,'""');
     const sid=a.data?.sid||"?";
     const src=a.data?.src_addr||"?";
     const dst=a.data?.dst_addr||"?";
@@ -407,7 +413,7 @@ th{background:#06B6D4;color:#fff}
 
 <h2>Statistiques Générales</h2>
 <div class="stat"><div class="stat-label">Total Alertes</div><div class="stat-value">${st.total}</div></div>
-<div class="stat"><div class="stat-label">Critique/Élevé</div><div class="stat-value class="${st.crit>0?'critical':''}">${st.crit}</div></div>
+<div class="stat"><div class="stat-label">Critique/Élevé</div><div class="stat-value ${st.crit>0?'critical':''}">${st.crit}</div></div>
 <div class="stat"><div class="stat-label">Sources Uniques</div><div class="stat-value">${st.uniqueAttackers}</div></div>
 <div class="stat"><div class="stat-label">MTTD</div><div class="stat-value">${st.mttd}m</div></div>
 <div class="stat"><div class="stat-label">Taux</div><div class="stat-value">${st.alertRate}/min</div></div>
@@ -431,9 +437,7 @@ ${st.topMitre.map(([t,c])=>`<tr><td>${esc(t)}</td><td>${esc(MITRE_NAMES[t]||"")}
 }
 
 // ── MAP RENDER ───────────────────────────────────────────────
-function renderMap(){
-  setTimeout(()=>{
-    const c=document.getElementById('worldmap');if(!c)return;
+function drawMap(c){
     const ctx=c.getContext('2d');
     const W=c.width=c.parentElement.clientWidth;
     const H=c.height=300;
@@ -457,9 +461,9 @@ function renderMap(){
     const srcCount={};
     S.alerts.forEach(a=>{const ip=a.data?.src_addr;if(ip)srcCount[ip]=(srcCount[ip]||0)+1});
 
-    // Target (Tokyo)
-    const tx=((139.7+180)/360)*W;
-    const ty=((90-35.7)/180)*H;
+    // Target marker (configurable)
+    const tx=((S.config.targetLng+180)/360)*W;
+    const ty=((90-S.config.targetLat)/180)*H;
 
     // Draw attack lines
     ctx.globalAlpha=0.3;
@@ -521,8 +525,23 @@ function renderMap(){
     ctx.stroke();
     ctx.fillStyle='#06B6D4';
     ctx.font='bold 11px Inter';
-    ctx.fillText('TARGET (Tokyo)',tx+16,ty+4);
-  },100);
+    ctx.fillText('TARGET ('+S.config.targetName+')',tx+16,ty+4);
+}
+
+function renderMap(){
+  requestAnimationFrame(()=>{
+    const c=document.getElementById('worldmap');
+    if(!c){
+      // Retry once more after next frame
+      requestAnimationFrame(()=>{
+        const c2=document.getElementById('worldmap');
+        if(!c2)return;
+        drawMap(c2);
+      });
+      return;
+    }
+    drawMap(c);
+  });
 }
 
 function drawContinents(ctx,W,H){
@@ -552,6 +571,37 @@ function drawContinents(ctx,W,H){
   ctx.lineTo(W*0.85,H*0.30);
   ctx.lineTo(W*0.80,H*0.40);
   ctx.lineTo(W*0.65,H*0.35);
+  ctx.stroke();
+
+  // South America
+  ctx.beginPath();
+  ctx.moveTo(W*0.25,H*0.55);
+  ctx.lineTo(W*0.30,H*0.55);
+  ctx.lineTo(W*0.32,H*0.65);
+  ctx.lineTo(W*0.28,H*0.75);
+  ctx.lineTo(W*0.25,H*0.85);
+  ctx.lineTo(W*0.22,H*0.70);
+  ctx.lineTo(W*0.25,H*0.55);
+  ctx.stroke();
+
+  // Africa
+  ctx.beginPath();
+  ctx.moveTo(W*0.48,H*0.40);
+  ctx.lineTo(W*0.55,H*0.40);
+  ctx.lineTo(W*0.57,H*0.55);
+  ctx.lineTo(W*0.53,H*0.75);
+  ctx.lineTo(W*0.49,H*0.75);
+  ctx.lineTo(W*0.46,H*0.55);
+  ctx.lineTo(W*0.48,H*0.40);
+  ctx.stroke();
+
+  // Oceania/Australia
+  ctx.beginPath();
+  ctx.moveTo(W*0.80,H*0.60);
+  ctx.lineTo(W*0.88,H*0.60);
+  ctx.lineTo(W*0.88,H*0.72);
+  ctx.lineTo(W*0.82,H*0.72);
+  ctx.lineTo(W*0.80,H*0.60);
   ctx.stroke();
 }
 
@@ -615,7 +665,7 @@ function render(){
 
       <div class="footer">
         <span>Snort 3.10.2 · Wazuh 4.14.3 · OpenSearch · ${S.alerts.length} events IDS · ${S.winAlerts.length} events Windows · TFE SOC</span>
-        <span>snort-ids (192.168.0.1) → Wazuh (192.168.0.2) → Dashboard · 🔊 ${S.soundEnabled?'ON':'OFF'} <button onclick="S.soundEnabled=!S.soundEnabled;render()" style="border:none;background:none;color:var(--cyan);cursor:pointer;font-size:10px">Toggle</button></span>
+        <span>snort-ids (your-snort-ip) → Wazuh (your-wazuh-ip) → Dashboard · 🔊 ${S.soundEnabled?'ON':'OFF'} <button onclick="S.soundEnabled=!S.soundEnabled;render()" style="border:none;background:none;color:var(--cyan);cursor:pointer;font-size:10px">Toggle</button></span>
       </div>
     </div>`;
 
@@ -1016,7 +1066,7 @@ function renderMapTab(st,topCountries){
           </div>
         </div>
         <div class="map-legend">
-          <div class="map-legend-item"><div class="map-legend-dot" style="background:var(--cyan)"></div>Serveur cible (Tokyo)</div>
+          <div class="map-legend-item"><div class="map-legend-dot" style="background:var(--cyan)"></div>Serveur cible (${esc(S.config.targetName)})</div>
           <div class="map-legend-item"><div class="map-legend-dot" style="background:var(--blue)"></div>Faible (1-3)</div>
           <div class="map-legend-item"><div class="map-legend-dot" style="background:var(--yellow)"></div>Moyen (4-10)</div>
           <div class="map-legend-item"><div class="map-legend-dot" style="background:var(--red)"></div>Élevé (11-50)</div>
@@ -1045,6 +1095,9 @@ function renderCfg(){
     <div class="modal-field"><label class="modal-label">URL OpenSearch</label><input class="modal-input" value="${S.config.url}" oninput="S.config.url=this.value"></div>
     <div class="modal-field"><label class="modal-label">Utilisateur</label><input class="modal-input" value="${S.config.username}" oninput="S.config.username=this.value"></div>
     <div class="modal-field"><label class="modal-label">Mot de passe</label><input class="modal-input" type="password" value="${S.config.password}" oninput="S.config.password=this.value"></div>
+    <div class="modal-field"><label class="modal-label">Nom du serveur cible</label><input class="modal-input" value="${esc(S.config.targetName)}" oninput="S.config.targetName=this.value"></div>
+    <div class="modal-field"><label class="modal-label">Latitude cible</label><input class="modal-input" type="number" step="0.01" value="${S.config.targetLat}" oninput="S.config.targetLat=parseFloat(this.value)||0"></div>
+    <div class="modal-field"><label class="modal-label">Longitude cible</label><input class="modal-input" type="number" step="0.01" value="${S.config.targetLng}" oninput="S.config.targetLng=parseFloat(this.value)||0"></div>
     <div class="modal-btns"><button class="btn-primary" onclick="connect()">Connecter</button><button class="btn-secondary" onclick="S.showConfig=false;render()">Annuler</button></div>
     <p class="modal-hint">Proxy Caddy → OpenSearch · Snort IDS + Windows via Wazuh agents</p>
   </div></div>`;
