@@ -28,7 +28,26 @@ https://soc.your-domain.com {
 	handle /opensearch/* {
 		@blocked not method POST
 		respond @blocked 403
-		@dangerous path /opensearch/_bulk* /opensearch/_delete* /opensearch/*/_delete* /opensearch/*/_mapping* /opensearch/*/_settings*
+		# Block dangerous write/admin endpoints
+		@dangerous {
+			path /opensearch/_bulk*
+			path /opensearch/_delete*
+			path /opensearch/*/_delete*
+			path /opensearch/*/_mapping*
+			path /opensearch/*/_settings*
+			path /opensearch/_create*
+			path /opensearch/_clone*
+			path /opensearch/_close*
+			path /opensearch/_open*
+			path /opensearch/_update*
+			path /opensearch/_update_by_query*
+			path /opensearch/_reindex*
+			path /opensearch/_aliases*
+			path /opensearch/_shrink*
+			path /opensearch/_split*
+			path /opensearch/_rollover*
+			path /opensearch/_forcemerge*
+		}
 		respond @dangerous 403
 		uri strip_prefix /opensearch
 		reverse_proxy https://localhost:9200 {

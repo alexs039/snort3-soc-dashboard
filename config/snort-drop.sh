@@ -7,7 +7,8 @@
 
 LOG="/var/ossec/logs/active-responses.log"
 BANS_FILE="/var/ossec/active-response/progressive-bans.json"
-TMP="/tmp/ar_input_$$.json"
+TMP=$(mktemp /tmp/ar_input_XXXXXX.json)
+trap 'rm -f "$TMP"' EXIT
 
 # Ensure bans file exists
 if [ ! -f "$BANS_FILE" ]; then
@@ -17,12 +18,16 @@ fi
 # ── CLEANUP MODE ─────────────────────────────────────────────
 if [ "$1" = "cleanup" ]; then
     NOW=$(date +%s)
-    /usr/bin/python3 -c "
-import json, subprocess, sys
-now = $NOW
-log = open('$LOG', 'a')
+    AR_NOW="$NOW" AR_BANS="$BANS_FILE" AR_LOG="$LOG" \
+    /usr/bin/python3 - << 'PYEOF'
+import json, subprocess, os
+from datetime import datetime
+now = int(os.environ.get('AR_NOW', '0'))
+log_file = os.environ.get('AR_LOG', '')
+bans_file = os.environ.get('AR_BANS', '')
+log = open(log_file, 'a')
 try:
-    with open('$BANS_FILE') as f:
+    with open(bans_file) as f:
         bans = json.load(f)
 except Exception:
     bans = []
@@ -34,7 +39,7 @@ for b in bans:
         if ip:
             subprocess.run(['iptables', '-D', 'INPUT', '-s', ip, '-j', 'DROP'], stderr=subprocess.DEVNULL)
             subprocess.run(['iptables', '-D', 'FORWARD', '-s', ip, '-j', 'DROP'], stderr=subprocess.DEVNULL)
-            log.write('$(date) snort-drop: CLEANUP expired ban for ' + ip + '\n')
+            log.write(datetime.now().strftime('%Y-%m-%d %H:%M:%S') + ' snort-drop: CLEANUP expired ban for ' + ip + '\n')
         # Keep entry for offense history but clear ban timestamps
         b['expires_at'] = 0
         b['banned_at'] = 0
@@ -42,10 +47,10 @@ for b in bans:
     else:
         remaining.append(b)
 
-with open('$BANS_FILE', 'w') as f:
+with open(bans_file, 'w') as f:
     json.dump(remaining, f, indent=2)
 log.close()
-" 2>> "$LOG"
+PYEOF
     exit 0
 fi
 
@@ -70,6 +75,12 @@ IP=$(echo "$PARSED" | cut -d'|' -f2)
 REASON=$(echo "$PARSED" | cut -d'|' -f3-)
 
 echo "$(date) snort-drop: CMD=$CMD IP=$IP" >> "$LOG"
+
+# Validate IP format (IPv4 or IPv6 basic chars only)
+if ! echo "$IP" | grep -qE '^[0-9a-fA-F.:]+$'; then
+    echo "$(date) snort-drop: INVALID IP rejected" >> "$LOG"
+    exit 1
+fi
 
 if [ -z "$IP" ]; then
     exit 1
