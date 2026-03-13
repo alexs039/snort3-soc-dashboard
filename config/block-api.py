@@ -5,6 +5,7 @@
 # Run: python3 /var/ossec/active-response/block-api.py
 # Systemd: create a service unit or run via screen/tmux
 
+import fcntl
 import ipaddress
 import json
 import logging
@@ -19,6 +20,7 @@ HOST = "127.0.0.1"
 PORT = 8089
 # Set to the SOC dashboard origin to restrict cross-origin access
 ALLOWED_ORIGIN = "https://soc.your-domain.com"
+MAX_BODY_SIZE = 4096  # 4KB is more than enough for {"ip": "..."}
 
 logging.basicConfig(
     filename="/var/ossec/logs/block-api.log",
@@ -31,14 +33,19 @@ logger = logging.getLogger("block-api")
 def load_bans():
     try:
         with open(BANS_FILE) as f:
-            return json.load(f)
+            fcntl.flock(f, fcntl.LOCK_SH)
+            data = json.load(f)
+            return data
     except Exception:
         return []
 
 
 def save_bans(bans):
     with open(BANS_FILE, "w") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
         json.dump(bans, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
 
 
 def format_duration(seconds):
@@ -123,6 +130,9 @@ class BlockAPIHandler(BaseHTTPRequestHandler):
     def handle_post_unblock(self):
         try:
             length = int(self.headers.get("Content-Length", 0))
+            if length > MAX_BODY_SIZE:
+                self.send_json(413, {"error": "Request body too large"})
+                return
             body = self.rfile.read(length)
             data = json.loads(body)
             ip = data.get("ip", "").strip()
@@ -163,6 +173,8 @@ class BlockAPIHandler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    if "your-domain.com" in ALLOWED_ORIGIN:
+        logger.warning("⚠️  CORS origin is still set to placeholder 'your-domain.com'. Update ALLOWED_ORIGIN before production use!")
     if not os.path.exists(BANS_FILE):
         save_bans([])
     server = HTTPServer((HOST, PORT), BlockAPIHandler)
