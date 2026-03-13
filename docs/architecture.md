@@ -51,14 +51,52 @@ Internet Traffic → Snort 3 IDS → JSON Alerts → Wazuh Agent → Wazuh Manag
 - Index pattern: `wazuh-alerts-4.x-YYYY.MM.DD`
 - Dashboard queries: `rule.groups = snort3` filtered
 
-### 5. SOC Dashboard (this project)
+### 5. Progressive Ban System (`config/snort-drop.sh`)
+
+**Role**: Active response with escalating temporary bans
+
+- Replaces permanent iptables bans with time-limited progressive bans
+- **1st offense**: 10 minutes ban
+- **2nd offense**: 1 hour ban
+- **3rd offense**: 24 hours ban
+- **4th+ offense**: 7 days ban
+- Tracks offense history in `/var/ossec/active-response/progressive-bans.json`
+- Each entry stores: `ip`, `offense_count`, `ban_duration_seconds`, `banned_at`, `expires_at`, `reason`
+- Supports cleanup mode (`snort-drop.sh cleanup`) for cron-based expired ban removal
+- Logs all actions to `/var/ossec/logs/active-responses.log`
+
+**Cron cleanup** (add to root crontab on Snort machine):
+```
+*/5 * * * * /var/ossec/active-response/bin/snort-drop.sh cleanup
+```
+
+### 6. Block Management API (`config/block-api.py`)
+
+**Role**: REST API for dashboard block management
+
+- Python HTTP server running on `localhost:8089` (no external dependencies)
+- `GET /blocked` — returns list of currently blocked IPs with time remaining, offense count, reason
+- `POST /unblock` — removes IP from iptables, keeps offense history for escalation
+- Proxied by Caddy at `/api/blocks/*`
+
+**Installation**:
+```bash
+cp config/block-api.py /var/ossec/active-response/block-api.py
+# Create systemd service or run via:
+python3 /var/ossec/active-response/block-api.py &
+```
+
+### 7. SOC Dashboard (this project)
 
 **Role**: Visualization and monitoring
 
 - Single HTML file, no build step required
 - Connects to OpenSearch via Caddy HTTPS proxy
-- Auto-refreshes every 15 seconds
-- Geolocation via ip-api.com proxy
+- Auto-refreshes every 15 seconds (fetches alerts + blocked IPs)
+- Geolocation via ip-api.com Caddy proxy (`/geo/*`)
+- **Interactive Leaflet.js map** with CartoDB Dark Matter tiles, attack markers and lines
+- **Block Management Panel**: view blocked IPs, reason, offense count, unblock button
+- **Country dropdown** for server location selection (50+ countries pre-configured)
 
 ## Network Diagram
 
@@ -70,19 +108,20 @@ Internet Traffic → Snort 3 IDS → JSON Alerts → Wazuh Agent → Wazuh Manag
               ▼
 ┌─────────────────────────┐     ┌──────────────────────────┐
 │   SNORT IDS (ens3)      │     │   WINDOWS PC (dorei)     │
-│   YOUR_SNORT_PUBLIC_IP       │     │   192.168.0.39           │
+│   YOUR_SNORT_PUBLIC_IP  │     │   192.168.0.39           │
 │                         │     │                          │
 │   Snort 3.10.2          │     │   Wazuh Agent 4.14.3     │
 │   Wazuh Agent 4.14.3    │     │   Windows EventChannel   │
-│   Active Response       │     │                          │
-│                         │     │                          │
+│   snort-drop.sh         │     │                          │
+│   (progressive bans)    │     │                          │
+│   block-api.py          │     │                          │
 │   ens4: 192.168.0.1     │     │                          │
 └────────────┬────────────┘     └──────────┬───────────────┘
              │    LAN 192.168.0.0/24       │
              ▼                             ▼
 ┌──────────────────────────────────────────────────────────┐
 │              WAZUH SERVER (ens4: 192.168.0.2)            │
-│              Public: YOUR_WAZUH_PUBLIC_IP                      │
+│              Public: YOUR_WAZUH_PUBLIC_IP                │
 │                                                          │
 │   ┌──────────────┐  ┌────────────────┐  ┌─────────────┐ │
 │   │ Wazuh Manager│  │ OpenSearch     │  │ Caddy       │ │
@@ -90,14 +129,13 @@ Internet Traffic → Snort 3 IDS → JSON Alerts → Wazuh Agent → Wazuh Manag
 │   │              │  │                │  │             │ │
 │   │ - Decoders   │  │ - wazuh-alerts │  │ - /opensearch│
 │   │ - Rules      │  │   indexes      │  │ - /geo      │ │
-│   │ - Active Resp│  │                │  │ - Dashboard │ │
-│   └──────────────┘  └────────────────┘  └─────────────┘ │
-│                                                          │
-│   ┌──────────────┐  ┌────────────────┐                   │
-│   │ Filebeat     │  │ Nginx          │                   │
-│   │ alerts→index │  │ Port 8443      │                   │
-│   └──────────────┘  │ SOC Dashboard  │                   │
-│                     └────────────────┘                   │
+│   │ - Active Resp│  │                │  │ - /api/blocks│
+│   └──────────────┘  └────────────────┘  │ - file_server│
+│                                          └─────────────┘ │
+│   ┌──────────────┐                                        │
+│   │ Filebeat     │                                        │
+│   │ alerts→index │                                        │
+│   └──────────────┘                                        │
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -108,7 +146,19 @@ Internet Traffic → Snort 3 IDS → JSON Alerts → Wazuh Agent → Wazuh Manag
 3. **Collection**: Wazuh agent reads JSON file, sends to manager
 4. **Decoding**: Wazuh decoder extracts fields (srcip, msg, sid)
 5. **Classification**: Wazuh rules assign level and category
-6. **Active Response**: Manager triggers IP block on Snort machine
+6. **Active Response**: Manager triggers progressive IP ban on Snort machine via `snort-drop.sh`
 7. **Indexing**: Filebeat sends alerts to OpenSearch
 8. **Visualization**: Dashboard queries OpenSearch every 15 seconds
-9. **Geolocation**: Dashboard resolves attacker IPs to countries via proxy
+9. **Geolocation**: Dashboard resolves attacker IPs to countries via Caddy `/geo/` proxy
+10. **Block Management**: Dashboard fetches blocked IPs from `/api/blocks/blocked`, allows manual unblock
+
+## Caddy Routes (`config/Caddyfile`)
+
+| Route | Backend | Description |
+|-------|---------|-------------|
+| `/api/blocks/*` | `localhost:8089` | Block management API |
+| `/api/*` | `localhost:55000` (HTTPS) | Wazuh REST API |
+| `/opensearch/*` | `localhost:9200` (HTTPS) | OpenSearch queries (POST only) |
+| `/geo/*` | `ip-api.com` (HTTP) | IP geolocation proxy |
+| `/*` | `file_server` | SOC Dashboard static files |
+

@@ -80,11 +80,10 @@ const WIN_EVENTS={
 // ── GEO CACHE ────────────────────────────────────────────────
 const geoCache={};
 
-// In production, replace with a server-side proxy to avoid mixed-content issues
 async function geoLookup(ip){
   if(geoCache[ip])return geoCache[ip];
   try{
-    const r=await fetch(`http://ip-api.com/json/${ip}?fields=country,countryCode,lat,lon,org`);
+    const r=await fetch(`/geo/json/${ip}?fields=country,countryCode,lat,lon,org`);
     if(r.ok){const d=await r.json();if(d.lat){geoCache[ip]=d;return d;}}
   }catch(e){}
   return null;
@@ -95,13 +94,76 @@ function isPrivateIP(ip){
   return /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|127\.|0\.|169\.254\.|::1$|fc[0-9a-f]{2}:|fd[0-9a-f]{2}:|fe80:)/.test(ip.toLowerCase());
 }
 
+// ── COUNTRIES ────────────────────────────────────────────────
+const COUNTRIES={
+  JP:{name:"Japon",lat:35.6762,lng:139.6503},
+  US:{name:"États-Unis",lat:38.8951,lng:-77.0364},
+  GB:{name:"Royaume-Uni",lat:51.5074,lng:-0.1278},
+  DE:{name:"Allemagne",lat:52.5200,lng:13.4050},
+  FR:{name:"France",lat:48.8566,lng:2.3522},
+  NL:{name:"Pays-Bas",lat:52.3676,lng:4.9041},
+  SG:{name:"Singapour",lat:1.3521,lng:103.8198},
+  AU:{name:"Australie",lat:-33.8688,lng:151.2093},
+  CA:{name:"Canada",lat:43.6532,lng:-79.3832},
+  BR:{name:"Brésil",lat:-23.5505,lng:-46.6333},
+  KR:{name:"Corée du Sud",lat:37.5665,lng:126.9780},
+  IN:{name:"Inde",lat:19.0760,lng:72.8777},
+  RU:{name:"Russie",lat:55.7558,lng:37.6176},
+  CN:{name:"Chine",lat:39.9042,lng:116.4074},
+  IT:{name:"Italie",lat:41.9028,lng:12.4964},
+  ES:{name:"Espagne",lat:40.4168,lng:-3.7038},
+  SE:{name:"Suède",lat:59.3293,lng:18.0686},
+  CH:{name:"Suisse",lat:46.9481,lng:7.4474},
+  PL:{name:"Pologne",lat:52.2297,lng:21.0122},
+  UA:{name:"Ukraine",lat:50.4501,lng:30.5234},
+  MX:{name:"Mexique",lat:19.4326,lng:-99.1332},
+  ZA:{name:"Afrique du Sud",lat:-25.7479,lng:28.2293},
+  NG:{name:"Nigéria",lat:9.0765,lng:7.3986},
+  EG:{name:"Égypte",lat:30.0444,lng:31.2357},
+  AR:{name:"Argentine",lat:-34.6037,lng:-58.3816},
+  TR:{name:"Turquie",lat:39.9334,lng:32.8597},
+  SA:{name:"Arabie Saoudite",lat:24.7136,lng:46.6753},
+  AE:{name:"Émirats Arabes",lat:25.2048,lng:55.2708},
+  ID:{name:"Indonésie",lat:-6.2088,lng:106.8456},
+  MY:{name:"Malaisie",lat:3.1390,lng:101.6869},
+  TH:{name:"Thaïlande",lat:13.7563,lng:100.5018},
+  VN:{name:"Vietnam",lat:21.0285,lng:105.8542},
+  PH:{name:"Philippines",lat:14.5995,lng:120.9842},
+  PK:{name:"Pakistan",lat:33.6844,lng:73.0479},
+  BD:{name:"Bangladesh",lat:23.8103,lng:90.4125},
+  IR:{name:"Iran",lat:35.6892,lng:51.3890},
+  IQ:{name:"Irak",lat:33.3152,lng:44.3661},
+  IL:{name:"Israël",lat:31.7683,lng:35.2137},
+  PT:{name:"Portugal",lat:38.7223,lng:-9.1393},
+  BE:{name:"Belgique",lat:50.8503,lng:4.3517},
+  AT:{name:"Autriche",lat:48.2082,lng:16.3738},
+  CZ:{name:"Tchéquie",lat:50.0755,lng:14.4378},
+  RO:{name:"Roumanie",lat:44.4268,lng:26.1025},
+  HU:{name:"Hongrie",lat:47.4979,lng:19.0402},
+  GR:{name:"Grèce",lat:37.9838,lng:23.7275},
+  FI:{name:"Finlande",lat:60.1699,lng:24.9384},
+  NO:{name:"Norvège",lat:59.9139,lng:10.7522},
+  DK:{name:"Danemark",lat:55.6761,lng:12.5683},
+  NZ:{name:"Nouvelle-Zélande",lat:-36.8485,lng:174.7633},
+  HK:{name:"Hong Kong",lat:22.3193,lng:114.1694},
+  TW:{name:"Taïwan",lat:25.0330,lng:121.5654},
+  KZ:{name:"Kazakhstan",lat:51.1694,lng:71.4491},
+  CL:{name:"Chili",lat:-33.4489,lng:-70.6693},
+  CO:{name:"Colombie",lat:4.7110,lng:-74.0721},
+  PE:{name:"Pérou",lat:-12.0464,lng:-77.0428},
+  MA:{name:"Maroc",lat:33.9716,lng:-6.8498},
+  TN:{name:"Tunisie",lat:36.8065,lng:10.1815},
+  KE:{name:"Kenya",lat:-1.2921,lng:36.8219},
+  TZ:{name:"Tanzanie",lat:-6.7924,lng:39.2083}
+};
+
 // ── STATE ────────────────────────────────────────────────────
 let S={
   alerts:[],winAlerts:[],filter:"all",search:"",sortDir:"desc",mitreFilter:null,
   connected:false,error:"",showConfig:false,tab:"snort",detailAlert:null,
-  config:{url:"https://soc.your-domain.com/opensearch",username:"",password:"",targetLat:50.85,targetLng:4.35,targetName:"Serveur"},
+  config:{url:"https://soc.your-domain.com/opensearch",username:"",password:"",serverCountry:"JP",targetName:"Serveur"},
   refreshInterval:null,geoData:{},mapReady:false,lastUpdate:Date.now(),
-  soundEnabled:false,lastAlertCount:0,loading:false
+  soundEnabled:false,lastAlertCount:0,loading:false,blockedIPs:[]
 };
 
 // ── HELPER FUNCTIONS ────────────────────────────────────────
@@ -186,6 +248,7 @@ async function fetchAlerts(){
     S.connected=true;S.error="";S.lastUpdate=Date.now();S.loading=false;
     // Geo lookup top IPs
     resolveGeo();
+    fetchBlockedIPs();
     render();
   }catch(e){S.error=e.message;S.connected=false;S.loading=false;render()}
 }
@@ -200,6 +263,30 @@ async function resolveGeo(){
     await new Promise(r=>setTimeout(r,250));
   }
   if(unique.length>0){S.mapReady=true;render();}
+}
+
+async function fetchBlockedIPs(){
+  try{
+    const r=await fetch("/api/blocks/blocked");
+    if(r.ok){const d=await r.json();S.blockedIPs=d.blocked||[];}
+  }catch(e){S.blockedIPs=[];}
+}
+
+async function unblockIP(ip){
+  try{
+    const r=await fetch("/api/blocks/unblock",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({ip})
+    });
+    if(r.ok){await fetchBlockedIPs();render();}
+    else{alert("Erreur lors du déblocage de l'IP");}
+  }catch(e){alert("Erreur réseau: "+e.message);}
+}
+
+function handleUnblock(btn){
+  const ip=btn.getAttribute('data-ip');
+  if(ip)unblockIP(ip);
 }
 
 async function connect(){
@@ -331,24 +418,6 @@ function filterA(){
   return S.sortDir==="desc"?f:[...f].reverse();
 }
 
-// ── BLOCKED IPS (Active Response) ────────────────────────────
-function getBlockedIPs(){
-  const blocked=[];
-  S.alerts.forEach(a=>{
-    const desc=a.rule?.description||"";
-    if(desc.includes("BLOCKED")||desc.includes("Active Response")){
-      blocked.push({
-        ip:a.data?.src_addr,
-        timestamp:a.timestamp,
-        reason:desc,
-        sid:a.data?.sid,
-        remaining:Math.max(0,300-(Date.now()-new Date(a.timestamp).getTime())/1000)
-      });
-    }
-  });
-  return blocked.filter(b=>b.remaining>0).slice(0,20);
-}
-
 // ── EXPORT FUNCTIONS ─────────────────────────────────────────
 function exportCSV(){
   const filtered=filterA();
@@ -436,173 +505,87 @@ ${st.topMitre.map(([t,c])=>`<tr><td>${esc(t)}</td><td>${esc(MITRE_NAMES[t]||"")}
   downloadFile(html,"rapport-soc-"+Date.now()+".html","text/html");
 }
 
-// ── MAP RENDER ───────────────────────────────────────────────
-function drawMap(c){
-    const ctx=c.getContext('2d');
-    const W=c.width=c.parentElement.clientWidth;
-    const H=c.height=300;
-
-    ctx.fillStyle='#080c18';
-    ctx.fillRect(0,0,W,H);
-
-    // Better continent outlines
-    ctx.strokeStyle='rgba(255,255,255,0.08)';
-    ctx.lineWidth=2;
-    // Grid
-    for(let i=0;i<W;i+=W/12){ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i,H);ctx.stroke();}
-    for(let i=0;i<H;i+=H/6){ctx.beginPath();ctx.moveTo(0,i);ctx.lineTo(W,i);ctx.stroke();}
-
-    // Simplified continent shapes
-    ctx.strokeStyle='rgba(6,182,212,0.15)';
-    ctx.lineWidth=1;
-    drawContinents(ctx,W,H);
-
-    // Plot dots and attack lines
-    const srcCount={};
-    S.alerts.forEach(a=>{const ip=a.data?.src_addr;if(ip)srcCount[ip]=(srcCount[ip]||0)+1});
-
-    // Target marker (configurable)
-    const tx=((S.config.targetLng+180)/360)*W;
-    const ty=((90-S.config.targetLat)/180)*H;
-
-    // Draw attack lines
-    ctx.globalAlpha=0.3;
-    Object.entries(S.geoData).forEach(([ip,geo])=>{
-      const x=((geo.lng+180)/360)*W;
-      const y=((90-geo.lat)/180)*H;
-      const count=srcCount[ip]||1;
-      const color=count>50?"#DC2626":count>10?"#EF4444":count>3?"#F59E0B":"#3B82F6";
-
-      ctx.strokeStyle=color;
-      ctx.lineWidth=Math.min(1+count/20,3);
-      ctx.beginPath();
-      ctx.moveTo(x,y);
-      ctx.lineTo(tx,ty);
-      ctx.stroke();
-    });
-    ctx.globalAlpha=1;
-
-    // Draw source dots
-    Object.entries(S.geoData).forEach(([ip,geo])=>{
-      const x=((geo.lng+180)/360)*W;
-      const y=((90-geo.lat)/180)*H;
-      const count=srcCount[ip]||1;
-      const size=Math.min(3+Math.log(count)*2,12);
-      const sev=count>50?"#DC2626":count>10?"#EF4444":count>3?"#F59E0B":"#3B82F6";
-
-      // Pulsing glow
-      const grad=ctx.createRadialGradient(x,y,0,x,y,size*3);
-      grad.addColorStop(0,sev+'88');
-      grad.addColorStop(1,sev+'00');
-      ctx.fillStyle=grad;
-      ctx.beginPath();
-      ctx.arc(x,y,size*3,0,Math.PI*2);
-      ctx.fill();
-
-      // Dot
-      ctx.fillStyle=sev;
-      ctx.beginPath();
-      ctx.arc(x,y,size,0,Math.PI*2);
-      ctx.fill();
-
-      // Country label for top 5
-      if(count>10){
-        ctx.fillStyle='#fff';
-        ctx.font='bold 10px Inter';
-        ctx.fillText((geo.code||'')+" ("+count+")",x+size+4,y+4);
-      }
-    });
-
-    // Target marker
-    ctx.fillStyle='#06B6D4';
-    ctx.beginPath();
-    ctx.arc(tx,ty,6,0,Math.PI*2);
-    ctx.fill();
-    ctx.strokeStyle='#06B6D4';
-    ctx.lineWidth=2;
-    ctx.beginPath();
-    ctx.arc(tx,ty,12,0,Math.PI*2);
-    ctx.stroke();
-    ctx.fillStyle='#06B6D4';
-    ctx.font='bold 11px Inter';
-    ctx.fillText('TARGET ('+S.config.targetName+')',tx+16,ty+4);
-}
+// ── MAP RENDER (Leaflet) ─────────────────────────────────────
+let leafletMap=null;
+let leafletAttackLayer=null;
 
 function renderMap(){
   requestAnimationFrame(()=>{
-    const c=document.getElementById('worldmap');
-    if(!c){
-      // Retry once more after next frame
-      requestAnimationFrame(()=>{
-        const c2=document.getElementById('worldmap');
-        if(!c2)return;
-        drawMap(c2);
-      });
-      return;
+    const container=document.getElementById('worldmap');
+    if(!container)return;
+
+    // Detect if the container was replaced by a re-render (no leaflet_id)
+    if(leafletMap&&!container._leaflet_id){
+      leafletMap=null;
+      leafletAttackLayer=null;
     }
-    drawMap(c);
+
+    if(!leafletMap){
+      leafletMap=L.map('worldmap',{
+        zoomControl:true,
+        scrollWheelZoom:true,
+        attributionControl:true
+      }).setView([20,10],2);
+
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
+        attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        subdomains:'abcd',
+        maxZoom:19
+      }).addTo(leafletMap);
+
+      leafletAttackLayer=L.layerGroup().addTo(leafletMap);
+    }
+
+    // Update markers and lines
+    leafletAttackLayer.clearLayers();
+
+    const serverInfo=COUNTRIES[S.config.serverCountry]||COUNTRIES['JP'];
+    const serverLat=serverInfo.lat;
+    const serverLng=serverInfo.lng;
+
+    // Server marker (green pulsing)
+    const serverIcon=L.divIcon({
+      className:'',
+      html:'<div class="server-marker"></div>',
+      iconSize:[16,16],
+      iconAnchor:[8,8]
+    });
+    L.marker([serverLat,serverLng],{icon:serverIcon,zIndexOffset:1000})
+      .bindPopup(`<strong>🎯 TARGET (Serveur) — ${esc(serverInfo.name)}</strong><br><span style="color:#10B981">${esc(S.config.targetName)}</span>`)
+      .addTo(leafletAttackLayer);
+
+    // Attack markers and lines
+    const srcCount={};
+    S.alerts.forEach(a=>{const ip=a.data?.src_addr;if(ip)srcCount[ip]=(srcCount[ip]||0)+1});
+
+    Object.entries(S.geoData).forEach(([ip,geo])=>{
+      const count=srcCount[ip]||1;
+      const color=count>50?'#DC2626':count>10?'#EF4444':count>3?'#F59E0B':'#3B82F6';
+      const radius=Math.min(5+Math.log(count)*3,20);
+
+      // Attack line
+      L.polyline([[geo.lat,geo.lng],[serverLat,serverLng]],{
+        color:color,
+        weight:Math.min(1+count/20,3),
+        opacity:0.5
+      }).addTo(leafletAttackLayer);
+
+      // Attack marker
+      L.circleMarker([geo.lat,geo.lng],{
+        radius:radius,
+        fillColor:color,
+        color:color,
+        weight:1,
+        opacity:1,
+        fillOpacity:0.7
+      }).bindPopup(
+        `<strong>${safeIP(ip)}</strong><br>`+
+        `${esc(geo.country||'')} · ${esc(geo.code||'')}<br>`+
+        `<span style="color:#94A3B8">${esc((geo.org||'N/A').substring(0,40))}</span><br>`+
+        `<strong style="color:${color}">${count} alerte${count>1?'s':''}</strong>`
+      ).addTo(leafletAttackLayer);
+    });
   });
-}
-
-function drawContinents(ctx,W,H){
-  // Very simplified continent outlines
-  // North America
-  ctx.beginPath();
-  ctx.moveTo(W*0.15,H*0.25);
-  ctx.lineTo(W*0.25,H*0.15);
-  ctx.lineTo(W*0.20,H*0.35);
-  ctx.lineTo(W*0.18,H*0.45);
-  ctx.lineTo(W*0.22,H*0.50);
-  ctx.lineTo(W*0.15,H*0.25);
-  ctx.stroke();
-
-  // Europe
-  ctx.beginPath();
-  ctx.moveTo(W*0.48,H*0.28);
-  ctx.lineTo(W*0.52,H*0.22);
-  ctx.lineTo(W*0.55,H*0.30);
-  ctx.lineTo(W*0.50,H*0.35);
-  ctx.stroke();
-
-  // Asia
-  ctx.beginPath();
-  ctx.moveTo(W*0.60,H*0.25);
-  ctx.lineTo(W*0.75,H*0.20);
-  ctx.lineTo(W*0.85,H*0.30);
-  ctx.lineTo(W*0.80,H*0.40);
-  ctx.lineTo(W*0.65,H*0.35);
-  ctx.stroke();
-
-  // South America
-  ctx.beginPath();
-  ctx.moveTo(W*0.25,H*0.55);
-  ctx.lineTo(W*0.30,H*0.55);
-  ctx.lineTo(W*0.32,H*0.65);
-  ctx.lineTo(W*0.28,H*0.75);
-  ctx.lineTo(W*0.25,H*0.85);
-  ctx.lineTo(W*0.22,H*0.70);
-  ctx.lineTo(W*0.25,H*0.55);
-  ctx.stroke();
-
-  // Africa
-  ctx.beginPath();
-  ctx.moveTo(W*0.48,H*0.40);
-  ctx.lineTo(W*0.55,H*0.40);
-  ctx.lineTo(W*0.57,H*0.55);
-  ctx.lineTo(W*0.53,H*0.75);
-  ctx.lineTo(W*0.49,H*0.75);
-  ctx.lineTo(W*0.46,H*0.55);
-  ctx.lineTo(W*0.48,H*0.40);
-  ctx.stroke();
-
-  // Oceania/Australia
-  ctx.beginPath();
-  ctx.moveTo(W*0.80,H*0.60);
-  ctx.lineTo(W*0.88,H*0.60);
-  ctx.lineTo(W*0.88,H*0.72);
-  ctx.lineTo(W*0.82,H*0.72);
-  ctx.lineTo(W*0.80,H*0.60);
-  ctx.stroke();
 }
 
 // ── RENDER ───────────────────────────────────────────────────
@@ -677,7 +660,7 @@ function renderSnort(st,filtered,tc,tl,threatMsg){
   const mxS=st.topSrc.length?st.topSrc[0][1]:1;
   const maxH=Math.max(...Object.values(st.hourly),1);
   const totalProto=st.proto.TCP+st.proto.UDP+st.proto.ICMP||1;
-  const blocked=getBlockedIPs();
+  const blocked=S.blockedIPs||[];
 
   // Trend calculation
   const today=st.last7Days[6]?.count||0;
@@ -789,16 +772,23 @@ function renderSnort(st,filtered,tc,tl,threatMsg){
       </div>
       <div class="card" style="grid-column:span 1">
         <h3 class="card-title"><span class="card-title-icon">🚫</span>Active Response — IPs bloquées (${blocked.length})</h3>
-        ${blocked.length===0?'<div class="empty-state">Aucune IP bloquée actuellement</div>':blocked.map(b=>`
+        ${blocked.length===0?'<div class="empty-state">Aucune IP bloquée actuellement</div>':blocked.map(b=>{
+          const g=S.geoData[b.ip];
+          const mins=Math.floor(b.time_remaining/60);
+          const secs=b.time_remaining%60;
+          const timeStr=mins>0?`${mins}m ${secs}s`:`${secs}s`;
+          return`
           <div class="response-item">
-            <div class="response-ip">${safeIP(b.ip)}</div>
-            <div class="response-reason">${esc(b.reason.substring(0,50))} · SID ${safeSid(b.sid)}</div>
+            <div class="response-ip">${safeIP(b.ip)}${g?'<div style="font-size:9px;color:var(--dim)">'+esc(g.country)+'</div>':''}</div>
+            <div class="response-reason">${esc((b.reason||'').substring(0,60))}</div>
+            <div class="response-offense">#${b.offense_count||1}</div>
+            <div class="response-duration">${esc(b.ban_duration_label||'')}</div>
             <div class="response-time">
-              <div class="response-badge active">${Math.floor(b.remaining)}s</div>
-              <div style="font-size:8px;color:var(--dim);margin-top:2px">${formatTime(b.timestamp)}</div>
+              <div class="response-badge active">${timeStr}</div>
             </div>
-          </div>`).join("")}
-        ${blocked.length>0?'<div style="margin-top:8px;font-size:9px;color:var(--dim)">Auto-unblock après 300 secondes</div>':''}
+            <button class="response-unblock-btn" data-ip="${safeIP(b.ip)}" onclick="handleUnblock(this)">🔓 Débloquer</button>
+          </div>`}).join("")}
+        ${blocked.length>0?'<div style="margin-top:8px;font-size:9px;color:var(--dim)">Ban progressif: 10min → 1h → 24h → 7j · <span style="color:var(--orange)">Offense # = prochain ban plus long</span></div>':''}
       </div>
     </div>
 
@@ -1052,13 +1042,14 @@ function renderMapTab(st,topCountries){
   const countries=Object.keys(S.geoData).length;
   const totalAttacks=st.total;
   const mostActive=topCountries[0]?topCountries[0][0]:'N/A';
+  const serverInfo=COUNTRIES[S.config.serverCountry]||COUNTRIES['JP'];
 
   return `
     <div class="grid-2">
       <div class="card" style="grid-column:span 2">
         <h3 class="card-title"><span class="card-title-icon">🗺️</span>Carte des attaques — Géolocalisation des sources</h3>
         <div class="map-container">
-          <canvas id="worldmap"></canvas>
+          <div id="worldmap" style="width:100%;height:100%;border-radius:8px"></div>
           <div class="map-stats-overlay">
             <div class="map-stats-item">Total:<span class="map-stats-value">${totalAttacks}</span></div>
             <div class="map-stats-item">Pays:<span class="map-stats-value">${countries}</span></div>
@@ -1066,7 +1057,7 @@ function renderMapTab(st,topCountries){
           </div>
         </div>
         <div class="map-legend">
-          <div class="map-legend-item"><div class="map-legend-dot" style="background:var(--cyan)"></div>Serveur cible (${esc(S.config.targetName)})</div>
+          <div class="map-legend-item"><div class="map-legend-dot" style="background:#10B981"></div>Serveur cible (${esc(serverInfo.name)})</div>
           <div class="map-legend-item"><div class="map-legend-dot" style="background:var(--blue)"></div>Faible (1-3)</div>
           <div class="map-legend-item"><div class="map-legend-dot" style="background:var(--yellow)"></div>Moyen (4-10)</div>
           <div class="map-legend-item"><div class="map-legend-dot" style="background:var(--red)"></div>Élevé (11-50)</div>
@@ -1089,6 +1080,7 @@ function renderMapTab(st,topCountries){
 }
 
 function renderCfg(){
+  const countryOptions=Object.entries(COUNTRIES).map(([code,c])=>`<option value="${esc(code)}" ${S.config.serverCountry===code?'selected':''}>${esc(c.name)}</option>`).join("");
   return `<div class="modal-overlay" onclick="if(event.target===this){S.showConfig=false;render()}"><div class="modal"><div class="modal-head"><h2>⚙ OpenSearch</h2><button class="modal-close" onclick="S.showConfig=false;render()">×</button></div>
     ${S.connected?'<div class="ok-badge">● Connecté · '+S.alerts.length+' alertes Snort · '+S.winAlerts.length+' alertes Windows</div>':''}
     ${S.error?'<div class="err-badge">✗ '+esc(S.error)+'</div>':''}
@@ -1096,8 +1088,7 @@ function renderCfg(){
     <div class="modal-field"><label class="modal-label">Utilisateur</label><input class="modal-input" value="${S.config.username}" oninput="S.config.username=this.value"></div>
     <div class="modal-field"><label class="modal-label">Mot de passe</label><input class="modal-input" type="password" value="${S.config.password}" oninput="S.config.password=this.value"></div>
     <div class="modal-field"><label class="modal-label">Nom du serveur cible</label><input class="modal-input" value="${esc(S.config.targetName)}" oninput="S.config.targetName=this.value"></div>
-    <div class="modal-field"><label class="modal-label">Latitude cible</label><input class="modal-input" type="number" step="0.01" value="${S.config.targetLat}" oninput="S.config.targetLat=parseFloat(this.value)||0"></div>
-    <div class="modal-field"><label class="modal-label">Longitude cible</label><input class="modal-input" type="number" step="0.01" value="${S.config.targetLng}" oninput="S.config.targetLng=parseFloat(this.value)||0"></div>
+    <div class="modal-field"><label class="modal-label">Pays du serveur</label><select class="modal-input" onchange="S.config.serverCountry=this.value;render()">${countryOptions}</select></div>
     <div class="modal-btns"><button class="btn-primary" onclick="connect()">Connecter</button><button class="btn-secondary" onclick="S.showConfig=false;render()">Annuler</button></div>
     <p class="modal-hint">Proxy Caddy → OpenSearch · Snort IDS + Windows via Wazuh agents</p>
   </div></div>`;

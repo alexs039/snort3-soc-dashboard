@@ -8,6 +8,12 @@ https://your-domain.com {
 
 # SOC Dashboard + API proxies
 https://soc.your-domain.com {
+	# Block management API (must be before generic /api/* route)
+	handle /api/blocks/* {
+		uri strip_prefix /api/blocks
+		reverse_proxy http://127.0.0.1:8089
+	}
+
 	# Wazuh API proxy
 	handle /api/* {
 		uri strip_prefix /api
@@ -40,12 +46,14 @@ https://soc.your-domain.com {
 		}
 	}
 
-	# Dashboard with basic auth
+	# SOC Dashboard static files
 	handle {
 		basic_auth {
 			# Generate hash: caddy hash-password --plaintext "YourPassword"
 			your_user $2a$14$YOUR_BCRYPT_HASH_HERE
 		}
-		reverse_proxy localhost:8443
+		file_server {
+			root /var/www/snort-dashboard
+		}
 	}
 }
