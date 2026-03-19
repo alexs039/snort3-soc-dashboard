@@ -1,0 +1,55 @@
+https://alexis.tokyo-ict.com {
+        reverse_proxy localhost:5601
+}
+
+https://shirako.alexis.tokyo-ict.com {
+        handle /api/blocks/* {
+            uri strip_prefix /api/blocks
+            reverse_proxy http://192.168.0.1:8089
+        }
+
+        handle /api/* {
+                uri strip_prefix /api
+                reverse_proxy https://localhost:55000 {
+                        transport http {
+                                tls_insecure_skip_verify
+                        }
+                }
+        }
+
+        handle /opensearch/* {
+                @blocked {
+                        not method POST OPTIONS
+                }
+                respond @blocked 403
+
+                @dangerous path /opensearch/_bulk* /opensearch/_delete* /opensearch/*/_delete* /opensearch/*/_mapping* /opensearch/*/_settings*
+                respond @dangerous 403
+
+                header Access-Control-Allow-Origin "*"
+                header Access-Control-Allow-Methods "POST, OPTIONS"
+                header Access-Control-Allow-Headers "Authorization, Content-Type"
+
+                @preflight method OPTIONS
+                respond @preflight 204
+
+                uri strip_prefix /opensearch
+                reverse_proxy https://localhost:9200 {
+                        transport http {
+                                tls_insecure_skip_verify
+                        }
+                }
+        }
+
+        handle /geo/* {
+                uri strip_prefix /geo
+                reverse_proxy http://ip-api.com {
+                        header_up Host ip-api.com
+                }
+        }
+
+        handle {
+                root * /var/www/snort-dashboard
+                file_server
+        }
+}

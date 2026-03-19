@@ -1,0 +1,118 @@
+<!-- Local rules -->
+<!-- Modify it at your will. -->
+<!-- Copyright (C) 2015, Wazuh Inc. -->
+
+<group name="custom_download,">
+  <rule id="100003" level="7">
+    <if_sid>550</if_sid>
+    <description>File downloaded: $(file) | Size: $(size) | Hash: $(md5_after) | Path: $(directory)</description>
+  </rule>
+</group>
+
+<group name="local,syslog,sshd,">
+  <rule id="100001" level="5">
+    <if_sid>5716</if_sid>
+    <srcip>1.1.1.1</srcip>
+    <description>sshd: authentication failed from IP 1.1.1.1.</description>
+    <group>authentication_failed,pci_dss_10.2.4,pci_dss_10.2.5,</group>
+  </rule>
+</group>
+
+<group name="windows,highlevel,">
+  <rule id="100201" level="10">
+    <field name="win.system.eventID">^4624$</field>
+    <field name="win.eventdata.targetUserName" type="pcre2">(?i)admin|administrator</field>
+    <description>Windows : Connexion administrateur</description>
+  </rule>
+  <rule id="100202" level="10">
+    <field name="win.system.eventID">^4720$</field>
+    <description>Windows : Nouvel utilisateur créé</description>
+  </rule>
+  <rule id="100205" level="4">
+    <field name="win.system.eventID">^4625$</field>
+    <description>Windows : Échec de connexion</description>
+  </rule>
+  <rule id="100203" level="12" frequency="5" timeframe="300">
+    <if_matched_sid>100205</if_matched_sid>
+    <description>Windows : Bruteforce (5 échecs / 5min)</description>
+  </rule>
+  <rule id="100204" level="11">
+    <field name="win.system.eventID">^4732$</field>
+    <field name="win.eventdata.memberName">Administrators</field>
+    <description>Windows : Utilisateur ajouté aux Administrateurs</description>
+  </rule>
+</group>
+
+<group name="virustotal,">
+  <rule id="100100" level="5">
+    <if_sid>87100</if_sid>
+    <description>[TEST] VirusTotal intégré avec succès - Fichier analysé</description>
+  </rule>
+  <rule id="100101" level="12">
+    <if_sid>87105</if_sid>
+    <description>VirusTotal ALERTE : Malware détecté ($(data.virustotal.positives) positifs)</description>
+  </rule>
+</group>
+
+<group name="snort3,ids,">
+  <rule id="100300" level="6">
+    <decoded_as>json</decoded_as>
+    <field name="sid">^9</field>
+    <description>Snort 3 IDS Alert: $(msg)</description>
+    <group>snort3,</group>
+  </rule>
+  <rule id="100301" level="8">
+    <if_sid>100300</if_sid>
+    <field name="msg">^SCAN</field>
+    <description>Snort 3: Scan/Recon - $(msg)</description>
+    <group>snort3,recon,</group>
+  </rule>
+  <rule id="100302" level="10">
+    <if_sid>100300</if_sid>
+    <field name="msg">^INTRUSION HTTP</field>
+    <description>Snort 3: Web Attack - $(msg)</description>
+    <group>snort3,web_attack,</group>
+  </rule>
+  <rule id="100303" level="12">
+    <if_sid>100300</if_sid>
+    <field name="msg">^MALWARE</field>
+    <description>Snort 3: Malware/C2 - $(msg)</description>
+    <group>snort3,malware,</group>
+  </rule>
+  <rule id="100304" level="10">
+    <if_sid>100300</if_sid>
+    <field name="msg">^INTRUSION DOS</field>
+    <description>Snort 3: DoS Attack - $(msg)</description>
+    <group>snort3,dos,</group>
+  </rule>
+  <rule id="100305" level="13" frequency="10" timeframe="120">
+    <if_matched_sid>100301</if_matched_sid>
+    <same_field>data.src_addr</same_field>
+    <description>Snort 3: CRITICAL - Attaque active depuis $(data.src_addr) - $(msg)</description>
+    <group>snort3,attack_active,</group>
+  </rule>
+  <rule id="100306" level="14" frequency="3" timeframe="300">
+    <if_matched_sid>100303</if_matched_sid>
+    <same_field>data.src_addr</same_field>
+    <description>Snort 3: CRITICAL - C2/Malware répété depuis $(data.src_addr)</description>
+    <group>snort3,malware_repeat,</group>
+  </rule>
+  <rule id="100307" level="13">
+    <if_sid>100303</if_sid>
+    <field name="msg">TOR</field>
+    <description>Snort 3: Connexion TOR détectée - $(msg)</description>
+    <group>snort3,tor,</group>
+  </rule>
+  <rule id="100308" level="11">
+    <if_sid>100303</if_sid>
+    <field name="msg">DNS</field>
+    <description>Snort 3: DNS suspect/DGA - $(msg)</description>
+    <group>snort3,dns_suspect,</group>
+  </rule>
+  <rule id="100309" level="8">
+    <if_sid>100300</if_sid>
+    <field name="msg">Nmap|portscan|XMAS|NULL scan|FIN scan</field>
+    <description>Snort 3: Nmap/Portscan détecté - $(msg)</description>
+    <group>snort3,recon,</group>
+  </rule>
+</group>
