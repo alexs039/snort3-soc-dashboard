@@ -8,6 +8,12 @@ https://your-domain.com {
 
 # SOC Dashboard + API proxies
 https://soc.your-domain.com {
+	# Block management API (must be before generic /api/* route)
+	handle /api/blocks/* {
+		uri strip_prefix /api/blocks
+		reverse_proxy http://127.0.0.1:8089
+	}
+
 	# Wazuh API proxy
 	handle /api/* {
 		uri strip_prefix /api
@@ -22,7 +28,26 @@ https://soc.your-domain.com {
 	handle /opensearch/* {
 		@blocked not method POST
 		respond @blocked 403
-		@dangerous path /opensearch/_bulk* /opensearch/_delete* /opensearch/*/_delete* /opensearch/*/_mapping* /opensearch/*/_settings*
+		# Block dangerous write/admin endpoints
+		@dangerous {
+			path /opensearch/_bulk*
+			path /opensearch/_delete*
+			path /opensearch/*/_delete*
+			path /opensearch/*/_mapping*
+			path /opensearch/*/_settings*
+			path /opensearch/_create*
+			path /opensearch/_clone*
+			path /opensearch/_close*
+			path /opensearch/_open*
+			path /opensearch/_update*
+			path /opensearch/_update_by_query*
+			path /opensearch/_reindex*
+			path /opensearch/_aliases*
+			path /opensearch/_shrink*
+			path /opensearch/_split*
+			path /opensearch/_rollover*
+			path /opensearch/_forcemerge*
+		}
 		respond @dangerous 403
 		uri strip_prefix /opensearch
 		reverse_proxy https://localhost:9200 {
@@ -40,12 +65,14 @@ https://soc.your-domain.com {
 		}
 	}
 
-	# Dashboard with basic auth
+	# SOC Dashboard static files
 	handle {
 		basic_auth {
 			# Generate hash: caddy hash-password --plaintext "YourPassword"
 			your_user $2a$14$YOUR_BCRYPT_HASH_HERE
 		}
-		reverse_proxy localhost:8443
+		file_server {
+			root /var/www/snort-dashboard
+		}
 	}
 }
